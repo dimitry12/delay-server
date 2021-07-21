@@ -15,6 +15,19 @@ func setupResponse(w *http.ResponseWriter, req *http.Request) {
     (*w).Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
 }
 
+// limitNumClients is HTTP handling middleware that ensures no more than
+// maxClients requests are passed concurrently to the given handler f.
+func limitNumClients(f http.HandlerFunc, maxClients int) http.HandlerFunc {
+  // Counting semaphore using a buffered channel
+  sema := make(chan struct{}, maxClients)
+
+  return func(w http.ResponseWriter, req *http.Request) {
+    sema <- struct{}{}
+    defer func() { <-sema }()
+    f(w, req)
+  }
+}
+
 func handler(w http.ResponseWriter, r *http.Request) {
 
         setupResponse(&w, r)
@@ -66,7 +79,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 }
 
 func main() {
-	http.HandleFunc("/", handler)
+	http.HandleFunc("/", limitNumClients(handler, 1))
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
